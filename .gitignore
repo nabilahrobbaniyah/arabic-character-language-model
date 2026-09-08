@@ -1,7 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
-*.so
+*$py.class
 
 # Virtual environment
 .venv/
@@ -11,6 +11,14 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/secrets.toml
+
 # IDE
 .vscode/
 .idea/
@@ -19,14 +27,20 @@ env/
 .DS_Store
 Thumbs.db
 
-# Python test/cache
-.pytest_cache/
-.coverage
-htmlcov/
+# Python packaging
+*.egg-info/
+dist/
+build/
 
 # Logs
 *.log
 
-# Generated processed data
-data/processed/*
-!data/processed/.gitkeep
+# Temporary files
+*.tmp
+
+# Generated files
+*.pkl
+*.pickle
+
+# Environment variables
+.env
