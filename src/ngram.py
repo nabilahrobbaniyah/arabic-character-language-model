@@ -1,11 +1,13 @@
 """
 Character-level N-gram language model.
 
-This module provides:
-    - N-gram generation
+Supports:
+    - Bigram
+    - Trigram
+    - Higher-order N-grams
     - N-gram counting
-    - Conditional probability calculation
-    - Bigram, trigram, and higher-order N-gram models
+    - Conditional probability
+    - Marginal probability fallback
 """
 
 from __future__ import annotations
@@ -18,31 +20,22 @@ class CharacterNGramModel:
     """
     Character-level N-gram language model.
 
-    Example for n=3:
+    For n=2:
 
-        Context:
-            "الش"
+        P(character_t | character_t-1)
 
-        Possible next character:
-            "م"
+    For n=3:
 
-        This represents:
+        P(character_t | character_t-2, character_t-1)
 
-            P(م | الش)
+    For n=4:
+
+        P(character_t | character_t-3,
+                         character_t-2,
+                         character_t-1)
     """
 
     def __init__(self, n: int = 3) -> None:
-        """
-        Initialize the N-gram model.
-
-        Args:
-            n:
-                Number of characters in each N-gram.
-
-                n=2 -> bigram
-                n=3 -> trigram
-                n=4 -> 4-gram
-        """
 
         if not isinstance(n, int):
             raise TypeError("n must be an integer")
@@ -52,53 +45,38 @@ class CharacterNGramModel:
 
         self.n = n
 
-        # Context -> Counter of possible next characters.
-        #
-        # Example:
-        #
-        # "ال" -> {"ش": 10, "ب": 4}
-        #
+        # context -> next-token counts
         self.counts: dict[str, Counter[str]] = {}
 
-        # Context -> probability distribution.
-        #
-        # Example:
-        #
-        # "ال" -> {"ش": 0.71, "ب": 0.29}
-        #
+        # context -> next-token probabilities
         self.probabilities: dict[str, dict[str, float]] = {}
 
-        # Overall character counts.
+        # Individual character frequencies
         self.token_counts: Counter[str] = Counter()
 
-        # Total number of tokens.
+        # Total number of characters
         self.total_tokens: int = 0
+
+    # N-GRAM GENERATION
 
     def generate_ngrams(
         self,
         tokens: list[str],
     ) -> list[tuple[str, ...]]:
         """
-        Generate N-grams from a list of character tokens.
+        Generate N-grams from character tokens.
 
         Example:
 
-            tokens = ["ا", "ب", "ج", "د"]
+            tokens = ["a", "b", "c", "d"]
             n = 3
 
-            result:
+        Result:
 
             [
-                ("ا", "ب", "ج"),
-                ("ب", "ج", "د")
+                ("a", "b", "c"),
+                ("b", "c", "d")
             ]
-
-        Args:
-            tokens:
-                List of character tokens.
-
-        Returns:
-            List of N-grams.
         """
 
         if len(tokens) < self.n:
@@ -107,7 +85,11 @@ class CharacterNGramModel:
         ngrams = []
 
         for i in range(len(tokens) - self.n + 1):
-            ngram = tuple(tokens[i : i + self.n])
+
+            ngram = tuple(
+                tokens[i:i + self.n]
+            )
+
             ngrams.append(ngram)
 
         return ngrams
@@ -119,74 +101,13 @@ class CharacterNGramModel:
     ) -> list[tuple[str, ...]]:
         """
         Tokenize text and generate N-grams.
-
-        Args:
-            text:
-                Input text.
-
-            tokenizer:
-                Character tokenizer.
-
-        Returns:
-            List of N-grams.
         """
 
         tokens = tokenizer.character_tokenize(text)
 
         return self.generate_ngrams(tokens)
 
-    def count_ngrams(
-        self,
-        dataset: list[str],
-        tokenizer,
-    ) -> dict[str, Counter[str]]:
-        """
-        Count N-grams in a dataset.
-
-        The model stores:
-
-            context -> next character -> count
-
-        For example, with n=3:
-
-            "الش" -> {
-                "م": 10,
-                "ي": 2
-            }
-
-        This means:
-
-            "الشم" appeared 10 times
-            "الشي" appeared 2 times
-
-        Args:
-            dataset:
-                List of text strings.
-
-            tokenizer:
-                Character tokenizer.
-
-        Returns:
-            Dictionary containing N-gram counts.
-        """
-
-        ngram_counts: DefaultDict[str, Counter[str]] = defaultdict(Counter)
-
-        for text in dataset:
-
-            tokens = tokenizer.character_tokenize(text)
-
-            ngrams = self.generate_ngrams(tokens)
-
-            for ngram in ngrams:
-
-                context = "".join(ngram[:-1])
-
-                next_token = ngram[-1]
-
-                ngram_counts[context][next_token] += 1
-
-        return dict(ngram_counts)
+    # COUNTING
 
     def count_tokens(
         self,
@@ -194,17 +115,7 @@ class CharacterNGramModel:
         tokenizer,
     ) -> Counter[str]:
         """
-        Count individual character tokens in the dataset.
-
-        Args:
-            dataset:
-                List of text strings.
-
-            tokenizer:
-                Character tokenizer.
-
-        Returns:
-            Counter containing character frequencies.
+        Count individual character tokens.
         """
 
         token_counts = Counter()
@@ -217,26 +128,55 @@ class CharacterNGramModel:
 
         return token_counts
 
+    def count_ngrams(
+        self,
+        dataset: list[str],
+        tokenizer,
+    ) -> dict[str, Counter[str]]:
+        """
+        Count N-grams.
+
+        Returns:
+
+            context -> Counter(next_token)
+        """
+
+        ngram_counts: DefaultDict[
+            str,
+            Counter[str]
+        ] = defaultdict(Counter)
+
+        for text in dataset:
+
+            tokens = tokenizer.character_tokenize(text)
+
+            ngrams = self.generate_ngrams(
+                tokens
+            )
+
+            for ngram in ngrams:
+
+                context = "".join(
+                    ngram[:-1]
+                )
+
+                next_token = ngram[-1]
+
+                ngram_counts[
+                    context
+                ][next_token] += 1
+
+        return dict(ngram_counts)
+
+    # TRAINING
+
     def fit(
         self,
         dataset: list[str],
         tokenizer,
     ) -> None:
         """
-        Train the N-gram model on a dataset.
-
-        Steps:
-
-            1. Count characters.
-            2. Count N-grams.
-            3. Convert counts into probabilities.
-
-        Args:
-            dataset:
-                Training dataset.
-
-            tokenizer:
-                Character tokenizer.
+        Train the N-gram model.
         """
 
         # Count individual characters.
@@ -255,7 +195,7 @@ class CharacterNGramModel:
             tokenizer,
         )
 
-        # Convert counts into probabilities.
+        # Convert counts to conditional probabilities.
         self.probabilities = {}
 
         for context, next_tokens in self.counts.items():
@@ -264,35 +204,28 @@ class CharacterNGramModel:
                 next_tokens.values()
             )
 
-            self.probabilities[context] = {}
+            self.probabilities[
+                context
+            ] = {}
 
             for token, count in next_tokens.items():
 
-                probability = count / context_total
+                probability = (
+                    count / context_total
+                )
 
-                self.probabilities[context][token] = probability
+                self.probabilities[
+                    context
+                ][token] = probability
+
+    # PROBABILITY
 
     def get_next_token_probabilities(
         self,
         context: str,
     ) -> dict[str, float]:
         """
-        Get probabilities of possible next characters.
-
-        Args:
-            context:
-                Character context of length n-1.
-
-        Returns:
-            Dictionary mapping next characters to probabilities.
-
-        Example:
-
-            {
-                "ا": 0.2,
-                "م": 0.5,
-                "ن": 0.3
-            }
+        Return P(next_token | context).
         """
 
         return self.probabilities.get(
@@ -305,16 +238,9 @@ class CharacterNGramModel:
         token: str,
     ) -> float:
         """
-        Calculate the marginal probability of a character.
+        Calculate P(token).
 
-        P(token)
-
-        Args:
-            token:
-                Character token.
-
-        Returns:
-            Probability of the character.
+        This is the marginal probability of a character.
         """
 
         if self.total_tokens == 0:
@@ -331,50 +257,38 @@ class CharacterNGramModel:
         token: str,
     ) -> float:
         """
-        Get P(token | context).
+        Calculate:
 
-        If the context has not been observed,
-        return the marginal probability P(token).
+            P(token | context)
 
-        Args:
-            context:
-                Previous n-1 characters.
-
-            token:
-                Candidate next character.
-
-        Returns:
-            Conditional probability.
+        If the context has never been seen,
+        fall back to P(token).
         """
 
-        context_probabilities = (
+        probabilities = (
             self.get_next_token_probabilities(
                 context
             )
         )
 
-        if token in context_probabilities:
+        if token in probabilities:
 
-            return context_probabilities[token]
+            return probabilities[token]
 
         # Backoff to marginal probability.
         return self.get_marginal_probability(
             token
         )
 
+    # INFORMATION
+
     def get_context_count(
         self,
         context: str,
     ) -> int:
         """
-        Return the total number of observations for a context.
-
-        Args:
-            context:
-                N-1 character context.
-
-        Returns:
-            Number of occurrences.
+        Return the total number of observations
+        for a context.
         """
 
         if context not in self.counts:
@@ -390,13 +304,6 @@ class CharacterNGramModel:
     ) -> str | None:
         """
         Return the most likely next character.
-
-        Args:
-            context:
-                N-1 character context.
-
-        Returns:
-            Most likely character, or None if no probability exists.
         """
 
         probabilities = (
@@ -416,19 +323,16 @@ class CharacterNGramModel:
     def get_contexts(self) -> list[str]:
         """
         Return all observed contexts.
-
-        Returns:
-            List of context strings.
         """
 
-        return list(self.probabilities.keys())
+        return list(
+            self.probabilities.keys()
+        )
 
     def get_vocabulary(self) -> list[str]:
         """
-        Return all characters observed in the training data.
-
-        Returns:
-            List of character tokens.
+        Return all characters observed
+        during training.
         """
 
         return sorted(
@@ -437,15 +341,14 @@ class CharacterNGramModel:
 
     def __len__(self) -> int:
         """
-        Return the number of observed contexts.
+        Number of observed contexts.
         """
 
-        return len(self.probabilities)
+        return len(
+            self.probabilities
+        )
 
     def __repr__(self) -> str:
-        """
-        Return a readable representation.
-        """
 
         return (
             f"CharacterNGramModel("
